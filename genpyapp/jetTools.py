@@ -7,9 +7,8 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import requests
 
-from dotenv import load_dotenv
-load_dotenv()
-
+#from dotenv import load_dotenv
+#load_dotenv()
 import configparser
 cfg = configparser.ConfigParser()
 cfg.read(os.getcwd()+'/config.ini')
@@ -17,7 +16,7 @@ import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
 
-ADMINS = ["jetweedy@gmail.com"]
+ADMINS = [cfg["settings"]["admin_email"]]
 SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", "/data/app.db")
 
 
