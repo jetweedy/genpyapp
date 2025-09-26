@@ -11,12 +11,12 @@ import logging
 import time
 from datetime import timedelta
 
-#from dotenv import load_dotenv
-#load_dotenv()
+from dotenv import load_dotenv
+load_dotenv()
 import configparser
-# Read .env with API key
 cfg = configparser.ConfigParser()
 cfg.read(os.path.join(os.getcwd(), '.env'))
+
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -25,12 +25,15 @@ import jetTools
 jetTools.initDB()
 
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-app = Flask(__name__,
-    template_folder="/app/templates",
-    static_folder="/app/static",
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static"),
     static_url_path="/static"
 )
+
 
 app.secret_key = "G3nPy4pp!"
 app.permanent_session_lifetime = timedelta(days=7)

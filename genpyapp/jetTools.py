@@ -6,18 +6,25 @@ import sqlite3
 from bs4 import BeautifulSoup
 import pandas as pd
 import requests
+from pathlib import Path
 
-#from dotenv import load_dotenv
-#load_dotenv()
+from dotenv import load_dotenv
+load_dotenv()
 import configparser
 cfg = configparser.ConfigParser()
-cfg.read(os.getcwd()+'/config.ini')
+cfg.read(os.path.join(os.getcwd(), '.env'))
+
+from werkzeug.security import generate_password_hash, check_password_hash
+
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
 
 ADMINS = [cfg["settings"]["admin_email"]]
-SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", "/data/app.db")
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", os.path.join(BASE_DIR, "/data/app.db"))
 
 
 
@@ -59,31 +66,46 @@ def dbQuery(query, params=()):
 
 
 def initDB():
-    db_dir = os.path.dirname(SQLITE_DB_PATH)
-    if db_dir and not os.path.exists(db_dir):
-        os.makedirs(db_dir)
-    conn = sqlite3.connect(SQLITE_DB_PATH)
-    cursor = conn.cursor()
-    # Example table creation
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS saved_stocks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_email TEXT,
-            symbol TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_email, symbol)
-        );
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL
-        );
-    ''')
-    conn.commit()
-    conn.close()
+    # Resolve default to the folder containing this file
+    base_dir = Path(__file__).resolve().parent
+    default_db = base_dir / "data/app.db"
 
+    # Allow env override, but normalize to an absolute path
+    env_path = os.getenv("SQLITE_DB_PATH")
+    db_path = Path(env_path).expanduser().resolve() if env_path else default_db
 
+    print("=== SQLite init ===")
+    print(" __file__:", __file__)
+    print(" base_dir:", base_dir)
+    print(" SQLITE_DB_PATH (effective):", repr(str(db_path)))
+
+    # Ensure destination directory exists
+    db_dir = db_path.parent
+    db_dir.mkdir(parents=True, exist_ok=True)
+    print(" db_dir exists:", db_dir.exists(), " | writable:", os.access(db_dir, os.W_OK))
+
+    # Create / migrate schema
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL
+            );
+        """)
+        conn.commit()
+        result = dbQuery(
+            "INSERT INTO users (email, password_hash) VALUES (?, ?)",
+            params=(cfg["settings"]["admin_email"], generate_password_hash(cfg["settings"]["admin_password"]))
+        )
+    finally:
+        conn.close()
+
+    # Verify the file is actually there
+    exists = db_path.exists()
+    size = db_path.stat().st_size if exists else 0
+    print(" created:", exists, " | size bytes:", size)
 
 
