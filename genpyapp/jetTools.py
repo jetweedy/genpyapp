@@ -23,20 +23,11 @@ pp = pprint.PrettyPrinter(indent=4)
 ADMINS = [cfg["settings"]["admin_email"]]
 
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", os.path.join(BASE_DIR, "/data/app.db"))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#print("BASE_DIR:", BASE_DIR)
+SQLITE_DB_PATH = os.path.join(BASE_DIR, "data/app.db")
+#print("SQLITE_DB_PATH:", SQLITE_DB_PATH)
 
-
-
-def get_db_connection(autocommit=True):
-    return pymysql.connect(
-        host=os.getenv('DB_HOST'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD'),
-        database=os.getenv('DB_NAME'),
-        cursorclass=pymysql.cursors.DictCursor,  # Return results as dicts
-        autocommit=autocommit,
-    )
 
 
 
@@ -66,23 +57,10 @@ def dbQuery(query, params=()):
 
 
 def initDB():
-    # Resolve default to the folder containing this file
-    base_dir = Path(__file__).resolve().parent
-    default_db = base_dir / "data/app.db"
 
-    # Allow env override, but normalize to an absolute path
-    env_path = os.getenv("SQLITE_DB_PATH")
-    db_path = Path(env_path).expanduser().resolve() if env_path else default_db
-
-    print("=== SQLite init ===")
-    print(" __file__:", __file__)
-    print(" base_dir:", base_dir)
-    print(" SQLITE_DB_PATH (effective):", repr(str(db_path)))
-
-    # Ensure destination directory exists
-    db_dir = db_path.parent
-    db_dir.mkdir(parents=True, exist_ok=True)
-    print(" db_dir exists:", db_dir.exists(), " | writable:", os.access(db_dir, os.W_OK))
+    db_path = SQLITE_DB_PATH
+    print("db_path:", db_path)
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
     # Create / migrate schema
     try:
@@ -103,9 +81,5 @@ def initDB():
     finally:
         conn.close()
 
-    # Verify the file is actually there
-    exists = db_path.exists()
-    size = db_path.stat().st_size if exists else 0
-    print(" created:", exists, " | size bytes:", size)
 
 

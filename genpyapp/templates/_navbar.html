@@ -71,20 +71,6 @@
   <ul>
 
 
-    {% if 'user_email' in session %}
-    <li>
-      <a href="#">My Tools ▼</a>
-      <ul>
-
-      </ul>
-    </li>
-    {% endif %}
-    <li>
-      <a href="#">News and Info ▼</a>
-      <ul>
-
-      </ul>
-    </li>
     {% if ('user_email' in session) and (session['user_email']=="jetweedy@gmail.com") %}
     <li>
       <a href="#">Admin ▼</a>
