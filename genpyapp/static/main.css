@@ -1,0 +1,132 @@
+
+html {
+  font-size: 16px;
+  font-family: Arial, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  padding: 1rem;
+  background-color: #f9f9f9;
+  color: #333;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+table, th, td {
+  border: 1px solid #ccc;
+}
+
+th, td {
+  padding: 0.5rem;
+  text-align: center;
+}
+
+th {
+  background-color: #f0f0f0;
+}
+
+tbody tr:nth-child(even) {
+  background-color: #f2f2f2;
+}
+
+tbody tr:hover {
+  background-color: #ddd;
+}
+
+button {
+  padding: 0.4rem 0.8rem;
+  font-size: 1rem;
+  cursor: pointer;
+  border: none;
+  background-color: #007bff;
+  color: white;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+button:hover {
+  background-color: #0056b3;
+}
+
+/* Responsive Font Scaling */
+@media (max-width: 600px) {
+  html {
+    font-size: 14px;
+  }
+
+  th, td {
+    font-size: 0.85rem;
+  }
+
+  button {
+    font-size: 0.9rem;
+    padding: 0.3rem 0.6rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  html {
+    font-size: 18px;
+  }
+}
+
+/* Table scroll on small screens */
+@media (max-width: 768px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+
+
+
+
+
+
+/* ---------------------------- */
+
+/*
+      body { 
+        font-family: sans-serif;
+        margin: 20px; 
+        background: #f5f5f5; 
+        font-size:2.5em;
+      }
+      input, button {
+        font-size:2.5em;
+      }
+*/
+      .article { margin-bottom: 20px; background: white; padding: 15px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+      .article a { font-size: 1.1em; font-weight: bold; color: #0077cc; text-decoration: none; }
+      .article a:hover { text-decoration: underline; }
+      .meta { font-size: 0.85em; color: #666; margin-top: 5px; }
+      #stocks { margin-top: 1em; }
+      .stock-row { 
+        /* ndisplay: flex; */
+        justify-content: space-between;
+        margin-bottom: 0.5em;
+      }
+      .chart-container { margin-bottom: 40px; }
+      #stockcharts .stockchart {
+          height: 400px;
+          min-width: 310px;
+          border:1px solid black;
+          margin:5px;
+      }
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,108 @@
+<!-- templates/_navbar.html -->
+<style>
+  #main-nav {
+    clear:both;
+  }
+  nav {
+    background: #333;
+    color: white;
+    padding: 10px;
+    position: fixed;
+    width: 100%;
+    left: 0;
+    top: 0;
+    z-index: 1000;
+  }
+
+  nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+  }
+
+  nav ul li {
+    position: relative;
+  }
+
+  nav a {
+    color: white;
+    text-decoration: none;
+    padding: 10px 15px;
+    display: block;
+  }
+
+  nav ul li:hover > ul {
+    display: block;
+  }
+
+  nav ul ul {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: #444;
+    min-width: 200px;
+  }
+
+  nav ul ul li {
+    width: 100%;
+  }
+
+  .auth-links {
+    float: right;
+  }
+
+  .auth-links a {
+    margin-left: 20px;
+  }
+</style>
+
+<nav id="main-nav">
+
+  <div class="auth-links">
+    {% if 'user_email' in session %}
+      <a href="/logout">Log out</a>
+    {% else %}
+      <a href="/login">Log in</a>
+    {% endif %}
+  </div>
+
+  <ul>
+
+
+    {% if 'user_email' in session %}
+    <li>
+      <a href="#">My Tools ▼</a>
+      <ul>
+    <li><a href="/suggested-stocks">Suggested Stocks</a></li>
+    <li><a href="/manage-stocks">My Stocks</a></li>
+    <li><a href="/stock-charts">My Charts</a></li>
+      </ul>
+    </li>
+    {% endif %}
+    <li>
+      <a href="#">News and Info ▼</a>
+      <ul>
+        <li><a href="https://www.marketbeat.com/ratings/" target="_blank">MarketBeat</a></li>
+        <li><a href="/rss/prnewswire/business">PR NewsWire Business</a></li>
+        <li><a href="/rss/reddit/stocks">r/stocks</a></li>
+        <li><a href="/rss/reddit/investing">r/investing</a></li>
+        <li><a href="/rss/reddit/wallstreetbets">r/wallstreetbets</a></li>
+        <li><a href="/volatile-stocks">Volatile Stocks</a></li>
+      </ul>
+    </li>
+    {% if ('user_email' in session) and (session['user_email']=="jetweedy@gmail.com") %}
+    <li>
+      <a href="#">Admin ▼</a>
+      <ul>
+    <li><a href="/admin/users">Manage Users</a></li>
+      </ul>
+    </li>
+    {% endif %}
+
+  </ul>
+
+</nav>
+
+<div style="clear:both"></div>
