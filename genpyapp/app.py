@@ -21,6 +21,7 @@ import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
 import jetTools
+import jetDB
 
 jetTools.initDB()
 
@@ -44,6 +45,32 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 @app.route('/')
 def home():
     return render_template("index.html")
+
+
+@app.route('/testLocalPostGresSQL')
+def dbTest():
+    return "testLocalPostGresSQL"
+    
+    PG_DSN = "postgresql+psycopg://appuser:appsecret@localhost:5432/appdb"
+    # create a table
+    print(jetDB.dbExecute(PG_DSN, """
+    CREATE TABLE IF NOT EXISTS testTable (
+      id BIGSERIAL PRIMARY KEY,
+      rantext TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """, return_rows=False))
+
+    # insert a row
+    print(jetDB.dbExecute(PG_DSN,
+        "INSERT INTO users (rantext) VALUES (:rantext) RETURNING id, email",
+        params={"rantext":"12345"},
+        return_rows=True))
+
+    # select
+    print(jetDB.dbExecute(PG_DSN,
+        "SELECT id, rantext FROM users testTable BY id DESC"))
+
 
 
 
