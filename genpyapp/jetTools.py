@@ -25,7 +25,7 @@ ADMINS = [cfg["settings"]["admin_email"]]
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #print("BASE_DIR:", BASE_DIR)
-SQLITE_DB_PATH = os.path.join(BASE_DIR, "data/app.db")
+SQLITE_DB_PATH = os.path.join(BASE_DIR, "sqlite/app.db")
 #print("SQLITE_DB_PATH:", SQLITE_DB_PATH)
 
 

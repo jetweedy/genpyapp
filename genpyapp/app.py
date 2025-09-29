@@ -23,7 +23,7 @@ pp = pprint.PrettyPrinter(indent=4)
 import jetTools
 import jetDB
 
-#jetTools.initSQLite()
+jetTools.initSQLite()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
