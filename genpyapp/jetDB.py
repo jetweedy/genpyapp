@@ -7,6 +7,14 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, Result
 from sqlalchemy.exc import SQLAlchemyError
 
+import os, sys
+
+from dotenv import load_dotenv
+load_dotenv()
+import configparser
+cfg = configparser.ConfigParser()
+cfg.read(os.path.join(os.getcwd(), '.env'))
+
 # Cache engines by DSN so we don't recreate them for each call
 _ENGINE_CACHE: Dict[str, Engine] = {}
 
@@ -26,7 +34,7 @@ Params = Union[Sequence[Any], Dict[str, Any]]
 ManyParams = Union[List[Params], Tuple[Params, ...]]
 
 def dbExecute(
-    dsn: str,
+    dsn: str, # False will default to cfg["settings"]["db_dsn"]
     query: str,
     params: Optional[Params] = None,
     *,
@@ -54,6 +62,10 @@ def dbExecute(
           "elapsed_ms": float
         }
     """
+
+    if not dsn:
+    	dsn = cfg["settings"]["db_dsn"]
+
     result: Dict[str, Any] = {"success": False, "data": None, "error": None, "elapsed_ms": 0.0}
     start = time.perf_counter()
 

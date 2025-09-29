@@ -49,9 +49,8 @@ def home():
 
 @app.route('/testLocalPostGresSQL')
 def dbTest():
-    PG_DSN = "postgresql+psycopg://appuser:appsecret@localhost:5432/appdb"
     ### create a table
-    print(jetDB.dbExecute(PG_DSN, """
+    print(jetDB.dbExecute(False, """
     CREATE TABLE IF NOT EXISTS testTable (
       id BIGSERIAL PRIMARY KEY,
       rantext TEXT NOT NULL,
@@ -59,12 +58,12 @@ def dbTest():
     )
     """, return_rows=False))
     ### UNCOMMENT BELOW TO insert a row
-    #print(jetDB.dbExecute(PG_DSN,
+    #print(jetDB.dbExecute(False,
     #    "INSERT INTO testTable (rantext) VALUES (:rantext) RETURNING id",
     #    params={"rantext":"54321"},
     #    return_rows=True))
     ### select into dict x
-    x = jetDB.dbExecute(PG_DSN
+    x = jetDB.dbExecute(False
         , "SELECT id, rantext FROM testTable ORDER BY id DESC")
     ### Return jsonify(x) as output to browser
     return jsonify(x)
