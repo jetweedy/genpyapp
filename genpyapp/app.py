@@ -49,10 +49,10 @@ def home():
 
 @app.route('/testLocalPostGresSQL')
 def dbTest():
-    return "testLocalPostGresSQL"
-    
+    #return "testLocalPostGresSQL"
+
     PG_DSN = "postgresql+psycopg://appuser:appsecret@localhost:5432/appdb"
-    # create a table
+    ### create a table
     print(jetDB.dbExecute(PG_DSN, """
     CREATE TABLE IF NOT EXISTS testTable (
       id BIGSERIAL PRIMARY KEY,
@@ -61,15 +61,17 @@ def dbTest():
     )
     """, return_rows=False))
 
-    # insert a row
-    print(jetDB.dbExecute(PG_DSN,
-        "INSERT INTO users (rantext) VALUES (:rantext) RETURNING id, email",
-        params={"rantext":"12345"},
-        return_rows=True))
+    ### UNCOMMENT BELOW TO insert a row
+    #print(jetDB.dbExecute(PG_DSN,
+    #    "INSERT INTO testTable (rantext) VALUES (:rantext) RETURNING id",
+    #    params={"rantext":"54321"},
+    #    return_rows=True))
 
-    # select
-    print(jetDB.dbExecute(PG_DSN,
-        "SELECT id, rantext FROM users testTable BY id DESC"))
+    ### select into dict x
+    x = jetDB.dbExecute(PG_DSN
+        , "SELECT id, rantext FROM testTable ORDER BY id DESC")
+
+    return jsonify(x)
 
 
 

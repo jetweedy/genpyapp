@@ -5,6 +5,19 @@
 
 
 
+## vEnv and Startup:
+
+```
+python -m venv .venv
+.\.venv\Scripts\activate
+
+python -m pip install --upgrade pip
+pip install pandas, requests
+pip install flask sqlalchemy pymysql "psycopg[binary]"
+pip install beautifulsoup4 feedparser python-dotenv
+```
+
+
 ## Setup
 
 

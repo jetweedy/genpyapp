@@ -1,6 +1,6 @@
 # cross_db.py
 from __future__ import annotations
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Union, Tuple
 import time
 
 from sqlalchemy import create_engine, text
