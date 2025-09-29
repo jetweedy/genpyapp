@@ -23,8 +23,7 @@ pp = pprint.PrettyPrinter(indent=4)
 import jetTools
 import jetDB
 
-jetTools.initDB()
-
+#jetTools.initSQLite()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -82,13 +81,13 @@ def register():
         password = request.form['password']
         hash_pw = generate_password_hash(password)
         # Check if email already exists
-        check = jetTools.dbQuery("SELECT * FROM users WHERE email = ?", (email,))
+        check = jetTools.sqliteQuery("SELECT * FROM users WHERE email = ?", (email,))
         if not check["success"]:
             return f"Database error: {check['error']}", 500
         if check["data"]:
             return "Email already registered.", 400
         # Insert user
-        insert = jetTools.dbQuery(
+        insert = jetTools.sqliteQuery(
             "INSERT INTO users (email, password_hash) VALUES (?, ?)",
             (email, hash_pw)
         )
@@ -105,7 +104,7 @@ def login():
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password']
-        result = jetTools.dbQuery("SELECT * FROM users WHERE email = ?", (email,))
+        result = jetTools.sqliteQuery("SELECT * FROM users WHERE email = ?", (email,))
         if not result["success"]:
             return f"Database error: {result['error']}", 500
         if not result["data"]:
@@ -129,7 +128,7 @@ def logout():
 
 @app.route('/users')
 def view_users():
-    result = jetTools.dbQuery("SELECT id, email FROM users ORDER BY id ASC")
+    result = jetTools.sqliteQuery("SELECT id, email FROM users ORDER BY id ASC")
     users = result.get("data") or []  # Ensures it's always a list
     return render_template("view-users.html", users=users)
 
@@ -143,7 +142,7 @@ def view_users():
 def admin_users():
     if session.get("user_email") not in jetTools.ADMINS:
         return "Unauthorized", 403
-    result = jetTools.dbQuery("SELECT email FROM users")
+    result = jetTools.sqliteQuery("SELECT email FROM users")
     if not result["success"]:
         return "Database error", 500
     return render_template("manage-users.html", users=result["data"])
@@ -158,7 +157,7 @@ def admin_add_user():
     if not email or not password:
         return jsonify({"message": "Missing fields"}), 400
     password_hash = generate_password_hash(password)
-    result = jetTools.dbQuery(
+    result = jetTools.sqliteQuery(
         "INSERT INTO users (email, password_hash) VALUES (?, ?)",
         params=(email, password_hash)
     )
@@ -177,7 +176,7 @@ def admin_edit_user():
     if not email or not password:
         return jsonify({"message": "Missing fields"}), 400
     password_hash = generate_password_hash(password)
-    result = jetTools.dbQuery(
+    result = jetTools.sqliteQuery(
         "UPDATE users SET password_hash = ? WHERE email = ?",
         params=(password_hash, email)
     )
@@ -192,7 +191,7 @@ def admin_delete_user():
         return jsonify({"message": "Unauthorized"}), 403
     data = request.get_json()
     email = data.get("email")
-    result = jetTools.dbQuery(
+    result = jetTools.sqliteQuery(
         "DELETE FROM users WHERE email = ?",
         params=(email,)
     )

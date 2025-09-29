@@ -31,7 +31,7 @@ SQLITE_DB_PATH = os.path.join(BASE_DIR, "data/app.db")
 
 
 
-def dbQuery(query, params=()):
+def sqliteQuery(query, params=()):
     result = {"success": False, "data": None, "error": None}
     try:
         conn = sqlite3.connect(SQLITE_DB_PATH)
@@ -56,12 +56,10 @@ def dbQuery(query, params=()):
     return result
 
 
-def initDB():
-
+def initSQLite():
     db_path = SQLITE_DB_PATH
     print("db_path:", db_path)
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-
     # Create / migrate schema
     try:
         conn = sqlite3.connect(str(db_path))
@@ -74,7 +72,7 @@ def initDB():
             );
         """)
         conn.commit()
-        result = dbQuery(
+        result = sqliteQuery(
             "INSERT INTO users (email, password_hash) VALUES (?, ?)",
             params=(cfg["settings"]["admin_email"], generate_password_hash(cfg["settings"]["admin_password"]))
         )
