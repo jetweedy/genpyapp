@@ -1,101 +1,199 @@
 {% include "_header.html" %}
 {% include "_navbar.html" %}
 
-  <style>
-    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    body { margin: 0; padding: 1rem; display: grid; gap: 1rem; }
-    .preview { position: relative; }
-    video { width: 100%; border-radius: 12px; background: #000; }
-    .badge {
-      position: absolute; top: 8px; right: 8px; padding: .35rem .6rem;
-      border-radius: 999px; font-size: .8rem; color: #fff; background: #1119;
-      backdrop-filter: blur(6px);
-    }
-    .controls { display: flex; gap: .5rem; flex-wrap: wrap; }
-    button, label[role="button"] {
-      padding: .7rem 1rem; border-radius: 10px; border: 1px solid #ddd; background: #f6f6f6;
-    }
-    button.primary { background: #0a7cff; color: white; border-color: #0a7cff; }
-    #out { padding: .75rem; background: #f4f8ff; border: 1px solid #cfe0ff; border-radius: 10px; word-break: break-word; }
-    .small { font-size: .9rem; color: #333 }
-    input[type="file"] { display: none; }
-  </style>
-
-
-  <h1>QR Scanner</h1>
+<style>
+  :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  body { margin:0; padding:1rem; display:grid; gap:1rem; }
+  .controls { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+  button, select, label[role="button"] { padding:.6rem 1rem; border-radius:10px; border:1px solid #ddd; background:#f6f6f6; }
+  button.primary { background:#0a7cff; color:#fff; border-color:#0a7cff; }
+  .preview { position:relative; }
+  video { width:100%; border-radius:12px; background:#000; }
+  canvas#overlay { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .panel { border:1px solid #e2e8f0; border-radius:12px; padding:.75rem; background:#fafafa; }
+  #lastVal { word-break:break-word; background:#fff; border:1px dashed #cbd5e1; border-radius:10px; padding:.6rem; min-height:3rem; }
+  .small { font-size:.9rem; color:#333 }
+</style>
+</head>
+<body>
+  <h1>Minimal QR Scanner</h1>
 
   <div class="controls">
     <button id="start" class="primary">Start camera</button>
     <button id="stop" disabled>Stop</button>
-    <label role="button" for="file" title="Scan a photo instead">Scan from image…</label>
+    <select id="cameraSel" title="Camera"></select>
+    <button id="flipBtn" title="Flip camera">Flip</button>
+    <label role="button" for="file">Scan from image…</label>
     <input id="file" type="file" accept="image/*" capture="environment" />
+    <button id="selfTest" title="Decode a known QR">Self-Test</button>
   </div>
 
   <div class="preview">
     <video id="video" playsinline muted></video>
-    <span class="badge" id="mode">idle</span>
+    <canvas id="overlay"></canvas>
   </div>
 
-  <div id="out" class="small">No codes yet.</div>
+  <div class="panel">
+    <h2>Last scan</h2>
+    <div id="lastVal" class="small">—</div>
+    <div style="display:flex;gap:.5rem;align-items:center;margin-top:.5rem;">
+      <button id="copyBtn">Copy</button>
+      <button id="openBtn">Open</button>
+    </div>
+    <div id="out" class="small" style="margin-top:.5rem;color:#475569;">No codes yet.</div>
+  </div>
 
-  <!-- ZXing fallback (only used if BarcodeDetector is unavailable) -->
-  <script type="module">
-    // Minimal feature detection
-    const hasBarcodeDetector = 'BarcodeDetector' in window;
-
-    // Lazy import ZXing only if needed
-    let ZXing = null;
-    async function loadZXing() {
-      if (ZXing) return ZXing;
-      // ESM from unpkg; you can pin a version if you like (e.g. @0.1.5)
-      ZXing = await import('https://unpkg.com/@zxing/browser@latest?module');
-      return ZXing;
-    }
-
+  <!-- jsQR (UMD, non-module) -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script>
+  (function(){
+    // DOM
     const video = document.getElementById('video');
-    const out = document.getElementById('out');
+    const overlay = document.getElementById('overlay');
+    const octx = overlay.getContext('2d', { willReadFrequently: true });
     const startBtn = document.getElementById('start');
     const stopBtn  = document.getElementById('stop');
+    const cameraSel = document.getElementById('cameraSel');
+    const flipBtn = document.getElementById('flipBtn');
     const fileInput = document.getElementById('file');
-    const modeBadge = document.getElementById('mode');
+    const selfTestBtn = document.getElementById('selfTest');
+    const lastValEl = document.getElementById('lastVal');
+    const out = document.getElementById('out');
+    const copyBtn = document.getElementById('copyBtn');
+    const openBtn = document.getElementById('openBtn');
 
+    // State
     let stream = null;
-    let stopFn = null;     // unified stop for either detector path
-    let using = 'idle';    // 'barcode-detector' | 'zxing' | 'idle'
+    let scanTimer = null;
+    let lastValue = '';
+    let devices = [];
+    let currentDeviceId = null;
 
-    function setStatus(txt) {
-      modeBadge.textContent = txt;
+    // Hidden canvas for pixel reads (sized to video frame)
+    const workCanvas = document.createElement('canvas');
+    const wctx = workCanvas.getContext('2d', { willReadFrequently: true });
+
+    function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
+    function setLast(val){
+      if (!val || val === lastValue) return;
+      lastValue = val;
+      lastValEl.innerHTML = esc(val);
+      out.textContent = 'QR detected.';
     }
-    function printResult(text, raw = null) {
-      out.innerHTML = `<strong>QR Detected:</strong><br>${escapeHtml(text)}`
-        + (raw && raw.format ? `<br><small>Format: ${escapeHtml(raw.format)}</small>` : '');
-    }
-    function printInfo(msg) {
-      out.textContent = msg;
-    }
-    function escapeHtml(s) {
-      return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+    copyBtn.onclick = async () => {
+      if (!lastValue) return;
+      try { await navigator.clipboard.writeText(lastValue); copyBtn.textContent='Copied!'; setTimeout(()=>copyBtn.textContent='Copy',900); } catch {}
+    };
+    openBtn.onclick = () => {
+      if (!lastValue) return;
+      let url = lastValue; try { new URL(url); } catch { url = 'https://' + url; }
+      window.open(url, '_blank', 'noopener,noreferrer');
+    };
+
+    async function listCameras(){
+      try { await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); } catch {}
+      const all = await navigator.mediaDevices.enumerateDevices();
+      devices = all.filter(d => d.kind === 'videoinput');
+      cameraSel.innerHTML = '';
+      devices.forEach((d,i)=>{
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || `Camera ${i+1}`;
+        cameraSel.appendChild(opt);
+      });
+      if (devices.length) {
+        cameraSel.value = currentDeviceId || devices[0].deviceId;
+      }
     }
 
-    async function startCamera() {
-      if (stream) await stopCamera(); // reset if needed
+    function drawOutline(corners) {
+      // corners: { x, y } for topLeft, topRight, bottomRight, bottomLeft
+      const dpr = window.devicePixelRatio || 1;
+      const vw = video.clientWidth, vh = video.clientHeight;
+      overlay.width = vw * dpr;
+      overlay.height = vh * dpr;
+      octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      octx.clearRect(0,0,vw,vh);
+      octx.lineWidth = 3;
+      octx.strokeStyle = 'rgba(0,200,0,0.9)';
+      octx.beginPath();
+      octx.moveTo(corners.topLeft.x, corners.topLeft.y);
+      octx.lineTo(corners.topRight.x, corners.topRight.y);
+      octx.lineTo(corners.bottomRight.x, corners.bottomRight.y);
+      octx.lineTo(corners.bottomLeft.x, corners.bottomLeft.y);
+      octx.closePath();
+      octx.stroke();
+    }
 
-      // Prefer the rear camera, with a gentle fallback
+    function clearOverlay() {
+      const dpr = window.devicePixelRatio || 1;
+      const vw = video.clientWidth, vh = video.clientHeight;
+      overlay.width = vw * dpr; overlay.height = vh * dpr;
+      octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      octx.clearRect(0,0,vw,vh);
+    }
+
+    function startScanning(){
+      stopScanning();
+      scanTimer = setInterval(()=>{
+        const vw = video.videoWidth, vh = video.videoHeight;
+        if (!vw || !vh) return;
+
+        // Size work canvas to actual video pixels
+        workCanvas.width = vw; workCanvas.height = vh;
+        wctx.drawImage(video, 0, 0, vw, vh);
+        const img = wctx.getImageData(0, 0, vw, vh);
+
+        const code = jsQR(img.data, vw, vh, { inversionAttempts: 'attemptBoth' });
+        if (code && code.data) {
+          setLast(code.data);
+          // Map code.location to overlay space (same as video element size)
+          // Since we draw video 1:1 into workCanvas using its natural size,
+          // location coords are already in video pixel space. We need to scale to element.
+          const scaleX = (video.clientWidth || vw) / vw;
+          const scaleY = (video.clientHeight || vh) / vh;
+          const mapPt = p => ({ x: p.x * scaleX, y: p.y * scaleY });
+          drawOutline({
+            topLeft:     mapPt(code.location.topLeftCorner),
+            topRight:    mapPt(code.location.topRightCorner),
+            bottomRight: mapPt(code.location.bottomRightCorner),
+            bottomLeft:  mapPt(code.location.bottomLeftCorner)
+          });
+        } else {
+          clearOverlay();
+        }
+      }, 150);
+    }
+    function stopScanning(){
+      if (scanTimer) clearInterval(scanTimer);
+      scanTimer = null;
+      clearOverlay();
+    }
+
+    async function startCamera(){
+      await listCameras();
+      if (!devices.length) { out.textContent = 'No cameras found.'; return; }
+
+      // Prefer the back camera: pick first device with "back" or "rear" in label, else first device
+      const preferred = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[0];
+      currentDeviceId = currentDeviceId || preferred.deviceId;
+      cameraSel.value = currentDeviceId;
+
       const constraints = {
+        audio: false,
         video: {
+          deviceId: { exact: currentDeviceId },
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false
+          width: { ideal: 1920 },
+          height:{ ideal: 1080 }
+        }
       };
 
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch (e) {
-        // Some browsers (or desktops) may not support 'environment'
-        // Try again without it
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        // Fallback to any camera
+        stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
       }
 
       video.srcObject = stream;
@@ -104,17 +202,14 @@
       startBtn.disabled = true;
       stopBtn.disabled = false;
 
-      if (hasBarcodeDetector) {
-        await runBarcodeDetector();
-      } else {
-        await runZXing();
-      }
+      // Start scanning loop
+      startScanning();
+      out.textContent = 'Scanning…';
+      window.addEventListener('resize', clearOverlay);
     }
 
-    async function stopCamera() {
-      if (stopFn) stopFn();     // stop scanners
-      stopFn = null;
-
+    async function stopCamera(){
+      stopScanning();
       if (stream) {
         for (const t of stream.getTracks()) t.stop();
         stream = null;
@@ -122,133 +217,64 @@
       video.srcObject = null;
       startBtn.disabled = false;
       stopBtn.disabled = true;
-      setStatus('idle');
-      using = 'idle';
-      printInfo('Camera stopped.');
+      out.textContent = 'Camera stopped.';
     }
 
-    async function runBarcodeDetector() {
-      using = 'barcode-detector';
-      setStatus('live: built-in');
-      printInfo('Scanning… (using BarcodeDetector)');
-
-      // Chrome/Edge/Android support is good. Safari support has been rolling out; if formats aren’t supported, we catch and fall back.
-      let detector;
-      try {
-        const formats = ['qr_code']; // Ask only for what we need
-        detector = new window.BarcodeDetector({ formats });
-      } catch (err) {
-        // Some engines need no constructor args; try again
-        try { detector = new window.BarcodeDetector(); }
-        catch (e2) {
-          // Fall back to ZXing if BarcodeDetector is unusable
-          await runZXing();
-          return;
-        }
-      }
-
-      let rafId = null, stopped = false;
-
-      async function tick() {
-        if (stopped) return;
-        try {
-          // Some engines allow video elements directly; others prefer ImageBitmap
-          const codes = await detector.detect(video);
-          if (codes && codes.length) {
-            // Grab the first QR code
-            const c = codes.find(x => x.format?.toLowerCase().includes('qr')) || codes[0];
-            printResult(c.rawValue || c.rawValue, { format: c.format || 'unknown' });
-          }
-        } catch (err) {
-          // If detection throws consistently, consider falling back to ZXing
-          // But give it a few frames first; here we just log quietly.
-        }
-        rafId = requestAnimationFrame(tick);
-      }
-
-      tick();
-
-      stopFn = () => {
-        stopped = true;
-        if (rafId) cancelAnimationFrame(rafId);
-      };
-    }
-
-    async function runZXing() {
-      using = 'zxing';
-      setStatus('live: zxing');
-      printInfo('Scanning… (using ZXing fallback)');
-      const { BrowserMultiFormatReader, NotFoundException } = await loadZXing();
-
-      const reader = new BrowserMultiFormatReader();
-      // null = pick the default camera; to pick by deviceId, enumerateInputDevices()
-      reader.decodeFromVideoDevice(null, video, (result, err) => {
-        if (result) {
-          printResult(result.getText(), { format: result.getBarcodeFormat() });
-        } else if (err && !(err instanceof NotFoundException)) {
-          // Non-"not found" errors can be reported if you want
-        }
-      });
-
-      stopFn = () => {
-        try { reader.reset(); } catch {}
-      };
-    }
-
-    // Image upload fallback
-    fileInput.addEventListener('change', async () => {
-      const file = fileInput.files?.[0];
-      if (!file) return;
-
-      // Prefer BarcodeDetector on still images if available; else use ZXing decode
-      const imgURL = URL.createObjectURL(file);
+    // Image decode using jsQR
+    fileInput.onchange = async () => {
+      const f = fileInput.files?.[0]; if (!f) return;
+      const url = URL.createObjectURL(f);
       const img = new Image();
-      img.onload = async () => {
-        try {
-          if (hasBarcodeDetector) {
-            const d = new window.BarcodeDetector({ formats: ['qr_code'] });
-            // Some engines only accept ImageBitmap
-            const bmp = await createImageBitmap(img);
-            const found = await d.detect(bmp);
-            if (found && found.length) {
-              const c = found[0];
-              printResult(c.rawValue || c.rawValue, { format: c.format || 'unknown' });
-              URL.revokeObjectURL(imgURL);
-              return;
-            }
-          }
-          // Fallback to ZXing single-image decode
-          const { BrowserQRCodeReader } = await loadZXing();
-          const reader = new BrowserQRCodeReader();
-          const res = await reader.decodeFromImage(img);
-          printResult(res.getText(), { format: res.getBarcodeFormat() });
-        } catch (e) {
-          out.textContent = 'No QR code found in the selected image.';
-        } finally {
-          URL.revokeObjectURL(imgURL);
+      img.onload = () => {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        workCanvas.width = w; workCanvas.height = h;
+        wctx.drawImage(img, 0, 0, w, h);
+        const data = wctx.getImageData(0, 0, w, h);
+        const code = jsQR(data.data, w, h, { inversionAttempts: 'attemptBoth' });
+        if (code && code.data) {
+          setLast(code.data);
+          out.textContent = 'QR detected (image).';
+        } else {
+          out.textContent = 'No QR found in that image.';
         }
+        URL.revokeObjectURL(url);
       };
-      img.onerror = () => {
-        out.textContent = 'Could not load image.';
-        URL.revokeObjectURL(imgURL);
+      img.onerror = () => { out.textContent = 'Could not load image.'; URL.revokeObjectURL(url); };
+      img.src = url;
+    };
+
+    // Self-test with a tiny embedded QR (decodes to "https://example.com")
+    selfTestBtn.onclick = () => {
+      const dataURL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABfUlEQVR4nO2ZsU3DMBREm1sAoyb1HkzQ0H4Yc1f2iKQwU8uGzq4e0a4C2k1nq2Xv8Xc7n1Q0qv2Aq8lU2k9n4i8n4pFh2FQ6Qm5L3oRRU8m2w0Rr5t0s4k0P6qgZCqk0b/1h6jM3mZk6m0X3oV8k6o0pP1D3E1vJw8cJ0U3gQ5vY3w3f3t3X6N0kH9hG1+0m7Yx9c4iK7xQzM1q0m5k6k2nA1VJkCqCwZf0R1qgQ3W6C1E/Q1iY9g9v6m8D5v8A0v8VZb1cY9b0s6n0aM3P8m3k4S6gM2Hn2j3vQJ1s8AqkS9q5i1Yzv0vC0QWZ7eQv1yQe8Qw3dJcC0oYb3GqWz5Yw8+1sQ7x8k2k4+G7qj3mVxvH3lq8bQfJ8sWcG4b0N9V3b9VQ1fGfQ7gX4b2y9uV6U4m3+K0Q1KQz6gZQ8x0Q7G0o2T+9Lk8h4kFJm2QfU7JYw==";
+      const img = new Image();
+      img.onload = () => {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        workCanvas.width = w; workCanvas.height = h;
+        wctx.drawImage(img, 0, 0, w, h);
+        const data = wctx.getImageData(0, 0, w, h);
+        const code = jsQR(data.data, w, h, { inversionAttempts: 'attemptBoth' });
+        if (code && code.data) { setLast(code.data); out.textContent = 'Self-test decoded.'; }
+        else { out.textContent = 'Self-test failed (unexpected).'; }
       };
-      img.src = imgURL;
-    });
+      img.src = dataURL;
+    };
 
-    // Wire up buttons
-    startBtn.addEventListener('click', () => startCamera().catch(err => {
-      out.textContent = 'Camera error: ' + (err?.message || err);
-      setStatus('error');
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-    }));
+    // Camera picker & flip
+    cameraSel.onchange = () => { currentDeviceId = cameraSel.value; startCamera(); };
+    flipBtn.onclick = () => {
+      if (!devices.length) return;
+      const idx = devices.findIndex(d => d.deviceId === cameraSel.value);
+      const next = devices[(idx + 1) % devices.length];
+      cameraSel.value = next.deviceId; currentDeviceId = next.deviceId; startCamera();
+    };
 
-    stopBtn.addEventListener('click', () => stopCamera());
+    // Start/Stop
+    startBtn.onclick = () => startCamera().catch(e => { out.textContent = 'Camera error: ' + (e?.message || e); });
+    stopBtn.onclick = () => stopCamera();
 
-    // Clean up if the page is hidden (optional but polite)
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden && stream) stopCamera();
-    });
+    // Clean up if backgrounded
+    document.addEventListener('visibilitychange', () => { if (document.hidden && stream) stopCamera(); });
+  })();
   </script>
 
 
