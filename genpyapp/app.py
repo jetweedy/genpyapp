@@ -45,6 +45,10 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 def home():
     return render_template("index.html")
 
+@app.route('/scanner/')
+def scanner():
+    return render_template("scanner.html")
+
 
 @app.route('/testLocalPostGresSQL')
 def dbTest():

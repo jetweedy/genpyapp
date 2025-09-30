@@ -1,0 +1,255 @@
+{% include "_header.html" %}
+{% include "_navbar.html" %}
+
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    body { margin: 0; padding: 1rem; display: grid; gap: 1rem; }
+    .preview { position: relative; }
+    video { width: 100%; border-radius: 12px; background: #000; }
+    .badge {
+      position: absolute; top: 8px; right: 8px; padding: .35rem .6rem;
+      border-radius: 999px; font-size: .8rem; color: #fff; background: #1119;
+      backdrop-filter: blur(6px);
+    }
+    .controls { display: flex; gap: .5rem; flex-wrap: wrap; }
+    button, label[role="button"] {
+      padding: .7rem 1rem; border-radius: 10px; border: 1px solid #ddd; background: #f6f6f6;
+    }
+    button.primary { background: #0a7cff; color: white; border-color: #0a7cff; }
+    #out { padding: .75rem; background: #f4f8ff; border: 1px solid #cfe0ff; border-radius: 10px; word-break: break-word; }
+    .small { font-size: .9rem; color: #333 }
+    input[type="file"] { display: none; }
+  </style>
+
+
+  <h1>QR Scanner</h1>
+
+  <div class="controls">
+    <button id="start" class="primary">Start camera</button>
+    <button id="stop" disabled>Stop</button>
+    <label role="button" for="file" title="Scan a photo instead">Scan from image…</label>
+    <input id="file" type="file" accept="image/*" capture="environment" />
+  </div>
+
+  <div class="preview">
+    <video id="video" playsinline muted></video>
+    <span class="badge" id="mode">idle</span>
+  </div>
+
+  <div id="out" class="small">No codes yet.</div>
+
+  <!-- ZXing fallback (only used if BarcodeDetector is unavailable) -->
+  <script type="module">
+    // Minimal feature detection
+    const hasBarcodeDetector = 'BarcodeDetector' in window;
+
+    // Lazy import ZXing only if needed
+    let ZXing = null;
+    async function loadZXing() {
+      if (ZXing) return ZXing;
+      // ESM from unpkg; you can pin a version if you like (e.g. @0.1.5)
+      ZXing = await import('https://unpkg.com/@zxing/browser@latest?module');
+      return ZXing;
+    }
+
+    const video = document.getElementById('video');
+    const out = document.getElementById('out');
+    const startBtn = document.getElementById('start');
+    const stopBtn  = document.getElementById('stop');
+    const fileInput = document.getElementById('file');
+    const modeBadge = document.getElementById('mode');
+
+    let stream = null;
+    let stopFn = null;     // unified stop for either detector path
+    let using = 'idle';    // 'barcode-detector' | 'zxing' | 'idle'
+
+    function setStatus(txt) {
+      modeBadge.textContent = txt;
+    }
+    function printResult(text, raw = null) {
+      out.innerHTML = `<strong>QR Detected:</strong><br>${escapeHtml(text)}`
+        + (raw && raw.format ? `<br><small>Format: ${escapeHtml(raw.format)}</small>` : '');
+    }
+    function printInfo(msg) {
+      out.textContent = msg;
+    }
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+    }
+
+    async function startCamera() {
+      if (stream) await stopCamera(); // reset if needed
+
+      // Prefer the rear camera, with a gentle fallback
+      const constraints = {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      };
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (e) {
+        // Some browsers (or desktops) may not support 'environment'
+        // Try again without it
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+
+      video.srcObject = stream;
+      await video.play();
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+
+      if (hasBarcodeDetector) {
+        await runBarcodeDetector();
+      } else {
+        await runZXing();
+      }
+    }
+
+    async function stopCamera() {
+      if (stopFn) stopFn();     // stop scanners
+      stopFn = null;
+
+      if (stream) {
+        for (const t of stream.getTracks()) t.stop();
+        stream = null;
+      }
+      video.srcObject = null;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      setStatus('idle');
+      using = 'idle';
+      printInfo('Camera stopped.');
+    }
+
+    async function runBarcodeDetector() {
+      using = 'barcode-detector';
+      setStatus('live: built-in');
+      printInfo('Scanning… (using BarcodeDetector)');
+
+      // Chrome/Edge/Android support is good. Safari support has been rolling out; if formats aren’t supported, we catch and fall back.
+      let detector;
+      try {
+        const formats = ['qr_code']; // Ask only for what we need
+        detector = new window.BarcodeDetector({ formats });
+      } catch (err) {
+        // Some engines need no constructor args; try again
+        try { detector = new window.BarcodeDetector(); }
+        catch (e2) {
+          // Fall back to ZXing if BarcodeDetector is unusable
+          await runZXing();
+          return;
+        }
+      }
+
+      let rafId = null, stopped = false;
+
+      async function tick() {
+        if (stopped) return;
+        try {
+          // Some engines allow video elements directly; others prefer ImageBitmap
+          const codes = await detector.detect(video);
+          if (codes && codes.length) {
+            // Grab the first QR code
+            const c = codes.find(x => x.format?.toLowerCase().includes('qr')) || codes[0];
+            printResult(c.rawValue || c.rawValue, { format: c.format || 'unknown' });
+          }
+        } catch (err) {
+          // If detection throws consistently, consider falling back to ZXing
+          // But give it a few frames first; here we just log quietly.
+        }
+        rafId = requestAnimationFrame(tick);
+      }
+
+      tick();
+
+      stopFn = () => {
+        stopped = true;
+        if (rafId) cancelAnimationFrame(rafId);
+      };
+    }
+
+    async function runZXing() {
+      using = 'zxing';
+      setStatus('live: zxing');
+      printInfo('Scanning… (using ZXing fallback)');
+      const { BrowserMultiFormatReader, NotFoundException } = await loadZXing();
+
+      const reader = new BrowserMultiFormatReader();
+      // null = pick the default camera; to pick by deviceId, enumerateInputDevices()
+      reader.decodeFromVideoDevice(null, video, (result, err) => {
+        if (result) {
+          printResult(result.getText(), { format: result.getBarcodeFormat() });
+        } else if (err && !(err instanceof NotFoundException)) {
+          // Non-"not found" errors can be reported if you want
+        }
+      });
+
+      stopFn = () => {
+        try { reader.reset(); } catch {}
+      };
+    }
+
+    // Image upload fallback
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+
+      // Prefer BarcodeDetector on still images if available; else use ZXing decode
+      const imgURL = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = async () => {
+        try {
+          if (hasBarcodeDetector) {
+            const d = new window.BarcodeDetector({ formats: ['qr_code'] });
+            // Some engines only accept ImageBitmap
+            const bmp = await createImageBitmap(img);
+            const found = await d.detect(bmp);
+            if (found && found.length) {
+              const c = found[0];
+              printResult(c.rawValue || c.rawValue, { format: c.format || 'unknown' });
+              URL.revokeObjectURL(imgURL);
+              return;
+            }
+          }
+          // Fallback to ZXing single-image decode
+          const { BrowserQRCodeReader } = await loadZXing();
+          const reader = new BrowserQRCodeReader();
+          const res = await reader.decodeFromImage(img);
+          printResult(res.getText(), { format: res.getBarcodeFormat() });
+        } catch (e) {
+          out.textContent = 'No QR code found in the selected image.';
+        } finally {
+          URL.revokeObjectURL(imgURL);
+        }
+      };
+      img.onerror = () => {
+        out.textContent = 'Could not load image.';
+        URL.revokeObjectURL(imgURL);
+      };
+      img.src = imgURL;
+    });
+
+    // Wire up buttons
+    startBtn.addEventListener('click', () => startCamera().catch(err => {
+      out.textContent = 'Camera error: ' + (err?.message || err);
+      setStatus('error');
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }));
+
+    stopBtn.addEventListener('click', () => stopCamera());
+
+    // Clean up if the page is hidden (optional but polite)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && stream) stopCamera();
+    });
+  </script>
+
+
+{% include "_footer.html" %}
